@@ -6,10 +6,10 @@
 ;; ORG
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(setq org-directory (expand-file-name "~/Dropbox/Org-Notes")
+(setq org-directory (expand-file-name "~/org-notes")
       org-agenda-files (list org-directory)
       org-ellipsis " ▼ "
-
+      org-babel-python-command "python3"
       ;; The standard unicode characters are usually misaligned depending on the
       ;; font. This bugs me. Markdown #-marks for headlines are more elegant.
       org-bullets-bullet-list '("#"))
@@ -57,55 +57,46 @@
   (advice-add #'org-schedule :around #'advise-org-default-time))
 
 
-(def-package! org-wild-notifier
-  :defer t
-  :init
-  (add-hook 'doom-post-init-hook #'org-wild-notifier-mode t)
-  :config
-  (setq org-wild-notifier-alert-time 15
-        alert-default-style (if IS-MAC 'osx-notifier 'libnotify)))
+;; (use-package! org-wild-notifier
+;;   :defer t
+;;   :init
+;;   (add-hook 'doom-after-init-modules-hook #'org-wild-notifier-mode t)
+;;   :config
+;;   (setq org-wild-notifier-alert-time 5
+;;         alert-default-style (if IS-MAC 'osx-notifier 'libnotify)))
+
+
+(after! ox-pandoc
+  (setq org-pandoc-options-for-revealjs '((variable . "highlight-theme=github")
+                                          (variable . "theme=white"))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; MARKDOWN
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(after! markdown-mode
-  ;; memo: install grip > ‘pip3 install grip‘
-  (defvar +my/markdown-process nil)
-  (defun +my/markdown-preview (&rest _)
-    "Preview markdown file by using grip."
-    (when (process-live-p +my/markdown-process)
-      (kill-process +my/markdown-process))
-    (setq +my/markdown-process
-          (start-process-shell-command "grip markdown-preview"
-                                       markdown-output-buffer-name
-                                       (format "grip --browser '%s'" (buffer-file-name)))))
+(remove-hook 'text-mode-hook #'auto-fill-mode)
 
-  ;; OVERRIDE
-  (when (executable-find "grip")
-    (advice-add #'markdown-preview :override #'+my/markdown-preview))
-  )
 
-(def-package! edit-indirect :defer t)
+(use-package! edit-indirect :defer t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; OTHERS
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def-package! blog-admin
+(use-package! blog-admin
   :defer t
   :commands blog-admin-start
   :hook (blog-admin-backend-after-new-post . find-file)
   :init
   ;; do your configuration here
   (setq blog-admin-backend-type 'hexo
-        blog-admin-backend-path "~/Developer/Github/hexo_blog"
+        blog-admin-backend-path "~/dev/hexo_blog"
         blog-admin-backend-new-post-in-drafts t
         blog-admin-backend-new-post-with-same-name-dir nil
         blog-admin-backend-hexo-config-file "_config.yml"))
 
-(def-package! youdao-dictionary
+(use-package! youdao-dictionary
   :defer t
   :config
   ;; Enable Cache
@@ -116,13 +107,22 @@
         ;; Enable Chinese word segmentation support
         youdao-dictionary-use-chinese-word-segmentation t))
 
-(def-package! tldr
+(use-package! tldr
   :defer t
   :config
   (setq tldr-directory-path (concat doom-etc-dir "tldr/"))
   (set-popup-rule! "^\\*tldr\\*" :side 'right :select t :quit t)
   )
 
-(def-package! link-hint :defer t)
+(use-package! link-hint :defer t)
 
-(def-package! symbol-overlay :defer t)
+(use-package! symbol-overlay :defer t)
+
+(after! so-long
+  (setq so-long-target-modes (delete 'text-mode so-long-target-modes)))
+
+
+(use-package! adoc-mode
+  :defer t
+  :init
+  (add-to-list 'auto-mode-alist (cons "\\.adoc\\'" 'adoc-mode)))

@@ -9,7 +9,7 @@
 
 (setq doom-scratch-buffer-major-mode 'emacs-lisp-mode)
 
-(setq-default fill-column 100
+(setq-default fill-column 120
               delete-trailing-lines t)
 
 ;; Delete the selection when pasting
@@ -29,8 +29,9 @@
                     ("^\\*edit-indirect" :size 0.6)
                     ("^\\*YASnippet Tables\\*$" :size 0.35)
                     ("^\\*grep\\*$" :size 0.35)
+                    ("^\\*pytest\\*" :size 0.35)
                     ("^\\*Anaconda\\*$" :size 0.35)
-                    ("^\\*helm kill ring\\*$" :size 0.35)
+                    ("\\*.*server log\\*$" :side top :size 0.20 :select nil)
                     ((lambda (buf _) (with-current-buffer buf (eq major-mode 'forge-topic-mode))) :size 0.35)
                     ))
 

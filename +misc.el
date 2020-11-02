@@ -1,12 +1,54 @@
 ;;; ~/.doom.d/+misc.el -*- lexical-binding: t; -*-
 
+;; Use chrome to browse
+(setq browse-url-browser-function 'browse-url-generic
+      browse-url-generic-program
+      (cond (IS-MAC "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+            ((executable-find "google-chrome-stable") "google-chrome-stable")
+            ((executable-find "/opt/google/chrome/chrome") "/opt/google/chrome/chrome")
+            ((executable-find "google-chrome") "google-chrome")))
+
+;; Set personal ispell dictionary file
+(when (file-exists-p (expand-file-name "~/.aspell.en.pws"))
+  (setq ispell-personal-dictionary (expand-file-name "~/.aspell.en.pws")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; INPUT METHOD
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(use-package! rime
+  :defer t
+  :custom
+  (rime-user-data-dir (expand-file-name "~/.config/fcitx/rime"))
+  (default-input-method "rime")
+  (rime-show-candidate 'posframe)
+  (rime-disable-predicates
+   '(rime-predicate-evil-mode-p
+     rime-predicate-after-alphabet-char-p
+     rime-predicate-prog-in-code-p))
+  (rime-inline-ascii-trigger 'shift-l)
+  :bind
+  ;; C-\ to toggle-input-method
+  ;; C-` to toggle
+  ;; , and . to page up and down
+  (:map rime-mode-map
+   ;; open rime menu
+   ("C-`" . 'rime-send-keybinding))
+  (:map rime-active-mode-map
+   ("C-j" . 'rime-inline-ascii))
+  :config
+  (when IS-MAC
+    (setq rime-librime-root "~/.emacs.d/librime/dist"))
+  ;; Set Nixos env
+  (when (and IS-LINUX (executable-find "nix"))
+    (setq rime-emacs-module-header-root (concat (shell-command-to-string "nix eval --raw '(let pkgs = import <nixpkgs> {}; in with pkgs; lib.getLib emacs)'") "/include")
+          rime-librime-root (shell-command-to-string "nix eval --raw '(let pkgs = import <nixpkgs> {}; in with pkgs; lib.getLib librime)'")
+          rime-share-data-dir (concat (shell-command-to-string "nix eval --raw '(let pkgs = import <nixpkgs> {}; in with pkgs; lib.getLib brise)'") "/share/rime-data"))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SSH
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(make--ssh "huawei-storage" "admin@10.213.37.36")
-(make--shell "huawei-storage" "admin@10.213.37.36")
-(make--ssh "huawei-gpu" "root@10.213.37.34")
-(make--shell "huawei-gpu" "root@10.213.37.34")
 
 (after! ssh-deploy
   (setq ssh-deploy-automatically-detect-remote-changes 1))
@@ -16,9 +58,10 @@
 ;; NAVIGATION
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(setq evil-cross-lines t)
-
-(def-package! evil-nerd-commenter :defer t)
+(setq evil-cross-lines t
+      evil-split-window-below t
+      evil-vsplit-window-right t
+      evil-emacs-state-cursor `(box ,(doom-color 'violet)))
 
 
 (after! evil
@@ -33,11 +76,43 @@
   (push 'prodigy-mode evil-snipe-disabled-modes))
 
 
-(def-package! avy
+(use-package! tmux-pane
+  :unless (display-graphic-p)
   :defer t
-  :init
-  (setq avy-timeout-seconds 0.2)
-  (setq avy-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l ?q ?w ?e ?r ?u ?i ?o ?p)))
+  :config
+  (defvar my-tmux-pane-mode-map
+    (let ((map (make-sparse-keymap)))
+      (define-key map (kbd "C-t k")
+        (lambda () (interactive) (tmux-pane--windmove "up"  "-U")))
+      (define-key map (kbd "C-t j")
+        (lambda () (interactive) (tmux-pane--windmove "down"  "-D")))
+      (define-key map (kbd "C-t h")
+        (lambda () (interactive) (tmux-pane--windmove "left" "-L")))
+      (define-key map (kbd "C-t l")
+        (lambda () (interactive) (tmux-pane--windmove "right" "-R")))
+      (define-key map (kbd "C-t C-k")
+        (lambda () (interactive) (tmux-pane--windmove "up"  "-U")))
+      (define-key map (kbd "C-t C-j")
+        (lambda () (interactive) (tmux-pane--windmove "down"  "-D")))
+      (define-key map (kbd "C-t C-h")
+        (lambda () (interactive) (tmux-pane--windmove "left" "-L")))
+      (define-key map (kbd "C-t C-l")
+        (lambda () (interactive) (tmux-pane--windmove "right" "-R")))
+      map))
+
+  (define-minor-mode my-tmux-pane-mode
+    "Seamlessly navigate between tmux pane and emacs window"
+    :init-value nil
+    :global t
+    :keymap 'my-tmux-pane-mode-map)
+
+  :hook (after-init . my-tmux-pane-mode))
+
+
+(use-package! imenu-list
+  :defer t
+  :config
+  (set-popup-rules! '(("^\\*Ilist\\*" :side right :size 40 :select t))))
 
 
 (after! nav-flash
@@ -50,12 +125,24 @@
     (ignore-errors (apply orig-fn args)))
   (advice-add 'nav-flash-show :around #'+advice/nav-flash-show))
 
+;; Use ) key to toggle it
+(after! dired
+  ;; Rust version ls
+  (when-let (exa (executable-find "exa"))
+    (setq insert-directory-program exa)
+    (setq dired-listing-switches (string-join (list "-ahl" "--group-directories-first") " ")))
+  )
 
-(def-package! ranger
-  :config
+(after! (:and ranger dired)
   (setq ranger-hide-cursor t
         ranger-show-hidden 'format
         ranger-deer-show-details nil)
+
+  (defun ranger-copy-relative-path ()
+    "Copy the current file path relative to `default-directory path."
+    (interactive)
+    (let ((current-prefix-arg 1))
+      (call-interactively 'dired-copy-filename-as-kill)))
 
   (defun ranger-close-and-kill-inactive-buffers ()
     "ranger close current buffer and kill inactive ranger buffers"
@@ -68,43 +155,67 @@
     (interactive)
     (ranger-revert)))
 
-(after! all-the-icons-dired
-  (advice-add! '(wdired-change-to-wdired-mode) :before (λ! (all-the-icons-dired-mode -1)))
-  (advice-add! '(wdired-finish-edit) :after (λ! (all-the-icons-dired-mode +1))))
-
 
 (after! dash-docs
   (setq dash-docs-use-workaround-for-emacs-bug nil)
-
-  ;; Use chrome to browse
-  (setq browse-url-browser-function 'browse-url-generic
-        browse-url-generic-program (if IS-MAC
-                                       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-                                     (executable-find "google-chrome")))
   (setq dash-docs-browser-func 'browse-url-generic))
+
+
+(use-package! highlight-indent-guides
+  :init
+  (setq highlight-indent-guides-method 'character)
+  :config
+  (defun +indent-guides-init-faces-h ()
+    (when (display-graphic-p)
+      (highlight-indent-guides-auto-set-faces))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IVY
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(after! ivy
-  (after! ivy-prescient
-    (setq ivy-prescient-retain-classic-highlighting t)))
+(after! (:and ivy ivy-prescient)
+  (setq ivy-prescient-retain-classic-highlighting t))
 
 
 (after! ivy-posframe
+  ;; Lower internal-border-width on MacOS
+  (when IS-MAC
+    (setq ivy-posframe-border-width 5))
+
   ;; Use minibuffer to display ivy functions
   (dolist (fn '(+ivy/switch-workspace-buffer
                 ivy-switch-buffer))
     (setf (alist-get fn ivy-posframe-display-functions-alist) #'ivy-display-function-fallback)))
 
+(after! ivy-rich
+  (plist-put! ivy-rich-display-transformers-list
+              'ivy-switch-buffer
+              '(:columns
+                ((ivy-switch-buffer-transformer (:width 60))
+                 (ivy-rich-switch-buffer-size (:width 7))
+                 (ivy-rich-switch-buffer-indicators (:width 4 :face error :align right))
+                 (ivy-rich-switch-buffer-major-mode (:width 12 :face warning))
+                 (ivy-rich-switch-buffer-project (:width 15 :face success))
+                 (ivy-rich-switch-buffer-path (:width (lambda (x) (ivy-rich-switch-buffer-shorten-path x (ivy-rich-minibuffer-width 0.3))))))
+                :predicate
+                (lambda (cand) (get-buffer cand)))))
+
 
 (after! counsel
+  ;; counsel-rg-base-command is configurable
   (setq counsel-find-file-ignore-regexp "\\(?:^[#.]\\)\\|\\(?:[#~]$\\)\\|\\(?:^Icon?\\)"
         counsel-describe-function-function 'helpful-callable
-        counsel-describe-variable-function 'helpful-variable
-        counsel-rg-base-command "rg -zS --no-heading --line-number --max-columns 1000 --color never %s ."
-        counsel-grep-base-command counsel-rg-base-command))
+        counsel-describe-variable-function 'helpful-variable))
+
+
+(use-package! counsel-etags
+  :defer t
+  :init
+  (add-hook! 'prog-mode-hook
+    (add-hook! 'after-save-hook
+               :append :local 'counsel-etags-virtual-update-tags))
+  :config
+  (setq counsel-etags-update-interval 60))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -129,27 +240,6 @@
                                     :compile "cmake --build Debug"
                                     :test "ctest")
 
-
-  ;; Add personal repo root to scan git projects
-  (defvar +my/repo-root-list '("~" "~/Dropbox" "~/go/src"))
-
-  (defun update-projectile-known-projects ()
-    (interactive)
-    (require 'magit)
-    (let (magit-repos
-          magit-abs-repos
-          (home (expand-file-name "~")))
-      ;; append magit repos at root with depth 1
-      (dolist (root +my/repo-root-list)
-        (setq magit-abs-repos (append magit-abs-repos (magit-list-repos-1 root 1))))
-      (setq magit-abs-repos (append magit-abs-repos (magit-list-repos)))
-
-      ;; convert abs path to relative path (HOME)
-      (dolist (repo magit-abs-repos)
-        (string-match home repo)
-        (push (replace-match "~" nil nil repo 0) magit-repos))
-      (setq projectile-known-projects magit-repos)))
-
   ;; set projectile-known-projects after magit
   (after! magit
     (update-projectile-known-projects))
@@ -159,11 +249,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; GIT
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (after! git-link
+  (setq git-link-open-in-browser t)
+
   (add-to-list 'git-link-remote-alist
-               '("10.193.35.53" git-link-github-http))
+               '("git\\.bst\\.ai" git-link-github-http))
   (add-to-list 'git-link-commit-remote-alist
-               '("10.193.35.53" git-link-commit-github-http))
+               '("git\\.bst\\.ai" git-link-commit-github-http))
   (add-to-list 'git-link-remote-alist
                '("rnd-github-usa-g\\.huawei\\.com" git-link-github-http))
   (add-to-list 'git-link-commit-remote-alist
@@ -175,17 +268,58 @@
 
 
 (after! magit
-  (setq magit-repository-directories '(("~/Developer" . 2))
+  (setq magit-repository-directories '(("~/dev" . 2))
         magit-save-repository-buffers nil
+        git-commit-style-convention-checks nil
         magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1)
 
-  (magit-wip-after-apply-mode t))
+  (magit-wip-after-apply-mode t)
+  (magit-wip-before-change-mode t))
 
 
-(def-package! magit-todos
-  :init
-  (setq magit-todos-ignored-keywords nil)
-  :config
+(after! forge
+  (push '("github.argo.ai" "github.argo.ai/api/v3"
+          "github.argo.ai" forge-github-repository)
+        forge-alist)
+
+  ;; TEMP
+  ;; (setq ghub-use-workaround-for-emacs-bug 'force)
+
+  (defvar forge-show-all-issues-and-pullreqs t
+    "If nil, only show issues and pullreqs assigned to me.")
+
+  (defun +my/forge-toggle-all-issues-and-pullreqs ()
+    (interactive)
+    (setq forge-insert-default '(forge-insert-pullreqs forge-insert-issues))
+    (setq forge-insert-assigned '(forge-insert-assigned-pullreqs forge-insert-assigned-issues))
+    (if forge-show-all-issues-and-pullreqs
+        (progn
+          (setq forge-show-all-issues-and-pullreqs nil)
+          (remove-hook! 'magit-status-sections-hook #'forge-insert-issues nil t)
+          (remove-hook! 'magit-status-sections-hook #'forge-insert-pullreqs nil t)
+          (magit-add-section-hook 'magit-status-sections-hook 'forge-insert-assigned-pullreqs nil t)
+          (magit-add-section-hook 'magit-status-sections-hook 'forge-insert-assigned-issues nil t))
+      (progn
+        (setq forge-show-all-issues-and-pullreqs t)
+        (remove-hook! 'magit-status-sections-hook #'forge-insert-assigned-issues nil t)
+        (remove-hook! 'magit-status-sections-hook #'forge-insert-assigned-pullreqs nil t)
+        (magit-add-section-hook 'magit-status-sections-hook 'forge-insert-pullreqs nil t)
+        (magit-add-section-hook 'magit-status-sections-hook 'forge-insert-issues nil t)))
+
+    ;; refresh magit-status buffer
+    (magit-refresh))
+
+  ;; Only show issues and pullreqs assigned to me
+  (+my/forge-toggle-all-issues-and-pullreqs)
+  )
+
+
+(after! browse-at-remote
+  (add-to-list 'browse-at-remote-remote-type-domains '("github.argo.ai" . "github"))
+  (add-to-list 'browse-at-remote-remote-type-domains '("git.bst.ai" . "gitlab")))
+
+
+(after! magit-todos
   (setq magit-todos-exclude-globs '("third-party/*" "third_party/*")))
 
 
@@ -198,6 +332,7 @@
           ("DONE"  . ,(face-foreground 'success))
           ("NOTE"  . ,(face-foreground 'success))
           ("DONT"  . ,(face-foreground 'error))
+          ("DEBUG"  . ,(face-foreground 'error))
           ("FAIL"  . ,(face-foreground 'error))
           ("FIXME" . ,(face-foreground 'error))
           ("XXX"   . ,(face-foreground 'error))
@@ -208,7 +343,7 @@
 ;; ATOMIC CHROME
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def-package! atomic-chrome
+(use-package! atomic-chrome
   :defer 3
   :preface
   (defun +my/atomic-chrome-server-running-p ()
@@ -263,7 +398,7 @@
     :name "ML Gitbook Publish"
     :command "npm"
     :args '("run" "docs:publish")
-    :cwd "~/Developer/Github/Machine_Learning_Questions"
+    :cwd "~/dev/Machine_Learning_Questions"
     :tags '(npm gitbook)
     :kill-signal 'sigkill
     :kill-process-buffer-on-stop t)
@@ -272,7 +407,7 @@
     :name "ML Gitbook Start"
     :command "npm"
     :args '("start")
-    :cwd "~/Developer/Github/Machine_Learning_Questions"
+    :cwd "~/dev/Machine_Learning_Questions"
     :tags '(npm gitbook)
     :init (lambda () (browse-url "http://localhost:4000"))
     :kill-signal 'sigkill
@@ -308,6 +443,8 @@
 ;; TERM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(set-formatter! 'shfmt "shfmt -i=2")
+
 (after! eshell
   ;; eshell-mode imenu index
   (add-hook! 'eshell-mode-hook (setq-local imenu-generic-expression '(("Prompt" " λ \\(.*\\)" 1))))
@@ -332,6 +469,3 @@
 (after! term
   ;; term-mode imenu index
   (add-hook! 'term-mode-hook (setq-local imenu-generic-expression '(("Prompt" "➜\\(.*\\)" 1)))))
-
-(def-package! vterm-toggle
-  :defer t)

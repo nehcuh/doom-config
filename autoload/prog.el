@@ -1,10 +1,5 @@
 ;;; ~/.doom.d/autoload/prog.el -*- lexical-binding: t; -*-
 
-;;;###autoload
-(defun reset-flycheck (&rest _)
-  (flycheck-mode -1)
-  (flycheck-mode +1))
-
 (defun my/realgud-eval-nth-name-forward (n)
   (interactive "p")
   (save-excursion
@@ -51,8 +46,8 @@
           (word-at-point)
           )))
     (with-current-buffer cmdbuf
-	  (setq realgud:process-filter-save (process-filter process))
-	  (set-process-filter process 'realgud:eval-process-output))
+      (setq realgud:process-filter-save (process-filter process))
+      (set-process-filter process 'realgud:eval-process-output))
     (realgud:cmd-eval expr)
     ))
 
@@ -102,3 +97,27 @@
             (cl-decf n 1))))
       (when name
         (realgud:cmd-eval name)))))
+
+;;;###autoload
+(defun async-shell-command-no-window (command)
+  "Requisite Documentation"
+  (interactive)
+  (let
+      ((display-buffer-alist
+        (list
+         (cons
+          "\\*Async Shell Command\\*.*"
+          (cons #'display-buffer-no-window nil)))))
+    (async-shell-command
+     command nil nil)))
+
+;;;###autoload
+(defadvice async-shell-command-no-window (around auto-confirm compile activate)
+  (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest args) t))
+            ((symbol-function 'y-or-n-p) (lambda (&rest args) t)))
+    ad-do-it))
+
+;;;###autoload
+(defun display-which-function ()
+  (interactive)
+  (message (which-function)))

@@ -2,33 +2,34 @@
 ;;; private/my/packages.el
 
 ;; disabled packages
-(packages! (exec-path-from-shell :disable t)
-           (solaire-mode :disable t)
-           (cquery :disable t)
-           (anaconda-mode :disable t)
-           (company-anaconda :disable t)
-           (diredfl :disable t)
-           (pyimport :disable t))
+(disable-packages! solaire-mode
+                   anaconda-mode
+                   company-anaconda
+                   lsp-python-ms
+                   pyimport)
+
+;; text
+;; (package! org-wild-notifier)
+(package! adoc-mode)
+(package! tldr)
+(package! edit-indirect)
+(package! blog-admin :recipe (:host github :repo "codefalling/blog-admin"))
+(package! youdao-dictionary)
+(package! link-hint)
+(package! symbol-overlay)
 
 ;; misc
-(packages! avy
-           helm
-           dired-narrow
-           edit-indirect
-           atomic-chrome
-           link-hint
-           symbol-overlay
-           tldr
-           (blog-admin :recipe (:fetcher github :repo "codefalling/blog-admin"))
-           youdao-dictionary
-           wucuo
-           org-wild-notifier
-           (vterm-toggle :recipe (:fetcher github :repo "jixiuf/vterm-toggle"))
-           )
+(package! all-the-icons-ibuffer)
+(package! dired-narrow)
+(package! atomic-chrome)
+(package! git-link)
+(package! counsel-etags)
+(package! imenu-list)
+(package! tmux-pane)
+(package! lsp-docker)
+(package! rime :recipe (:host github :repo "DogLooksGood/emacs-rime" :files ("*.el" "Makefile" "lib.c")))
+(package! highlight-indent-guides)
 
 ;; programming
-(packages! lsp-mode lsp-ui company-lsp
-           import-js indium
-           lsp-python-ms importmagic py-isort
-           (flycheck-google-cpplint :recipe (:fetcher github :repo "flycheck/flycheck-google-cpplint"))
-           )
+(package! bazel-mode :recipe (:host github :repo "bazelbuild/emacs-bazel-mode"))
+(package! import-js)

@@ -7,6 +7,20 @@
     (delete-region (region-beginning) (region-end)))
   (yank))
 
+(if EMACS27+
+;;;###autoload
+    (defun xterm-paste-with-delete-region (event)
+      (interactive "e")
+      (when (evil-visual-state-p)
+        (delete-region (region-beginning) (region-end)))
+      (xterm-paste event))
+;;;###autoload
+  (defun xterm-paste-with-delete-region ()
+    (interactive)
+    (when (evil-visual-state-p)
+      (delete-region (region-beginning) (region-end)))
+    (xterm-paste)))
+
 ;;;###autoload
 (defun doom/toggle-comment-region-or-line ()
   "Comments or uncomments the whole region or if no region is
@@ -36,20 +50,91 @@ selected, then the current line."
 (defmacro make--shell (name ip &rest arglist)
   `(defun ,(intern (format "my-shell-%s" name)) ,arglist
      (interactive)
-     (find-file ,(format "/ssh:%s:" ip))
+     (find-file ,(format "/sshx:%s:" ip))
      (vterm-toggle-cd)))
 
 ;;;###autoload
 (defmacro make--ssh (name ip &rest arglist)
   `(defun ,(intern (format "my-ssh-%s" name)) ,arglist
      (interactive)
-     (find-file ,(format "/ssh:%s:" ip))))
+     (find-file ,(format "/sshx:%s:" ip))))
+
 
 ;;;###autoload
 (defun +ivy/project-search-with-hidden-files ()
   (interactive)
   (let ((counsel-rg-base-command "rg -zS --no-heading --line-number --color never --hidden %s . "))
     (+ivy/project-search)))
+
+;;;###autoload
+(defun +ivy--counsel-file-jump-use-fd-rg-specific-files (args)
+  "Change `counsel-file-jump' to use fd or ripgrep, if they are available."
+  (cl-destructuring-bind (find-program . args)
+      (cond ((executable-find doom-projectile-fd-binary)
+             (cons doom-projectile-fd-binary (list "-t" "f" "-E" ".git" "-e" "py" "-e" "yaml" "-e" "md" "-e" "adoc")))
+            ((executable-find "rg")
+             (split-string (format counsel-rg-base-command "--files --no-messages") " " t))
+            ((cons find-program args)))
+    (unless (listp args)
+      (user-error "`counsel-file-jump-args' is a list now, please customize accordingly."))
+    (counsel--call
+     (cons find-program args)
+     (lambda ()
+       (goto-char (point-min))
+       (let ((offset (if (member find-program (list "rg" doom-projectile-fd-binary)) 0 2))
+             files)
+         (while (< (point) (point-max))
+           (push (buffer-substring
+                  (+ offset (line-beginning-position)) (line-end-position)) files)
+           (forward-line 1))
+         (nreverse files))))))
+
+;;;###autoload
+(defun +ivy/project-search-specific-files (&optional initial-input initial-directory)
+  "Similar to counsel-file-jump"
+  (interactive
+   (list nil
+         (when current-prefix-arg
+           (counsel-read-directory-name "From directory: "))))
+  (counsel-require-program find-program)
+  (let ((default-directory (doom-project-root)))
+    (ivy-read "Find file: "
+              (+ivy--counsel-file-jump-use-fd-rg-specific-files counsel-file-jump-args)
+              :matcher #'counsel--find-file-matcher
+              :initial-input initial-input
+              :action #'find-file
+              :preselect (counsel--preselect-file)
+              :require-match 'confirm-after-completion
+              :history 'file-name-history
+              :caller 'counsel-file-jump)))
+
+;;;###autoload
+(defvar +my/repo-root-list '("~" "~/Dropbox" "~/go/src" "~/.cache")
+  "personal repo root to scan git projects")
+
+;;;###autoload
+(defvar +my/user-custom-repos '("/CCN_Tools/work/bstnnx_release/regression_test/"))
+
+;;;###autoload
+(defun update-projectile-known-projects ()
+  (interactive)
+  (require 'magit)
+  (let (magit-repos
+        magit-abs-repos
+        (home (expand-file-name "~")))
+    ;; append magit repos at root with depth 1
+    (dolist (root +my/repo-root-list)
+      (setq magit-abs-repos (append magit-abs-repos (magit-list-repos-1 root 1))))
+    (setq magit-abs-repos (append magit-abs-repos (magit-list-repos)))
+
+    ;; convert abs path to relative path (HOME)
+    (dolist (repo magit-abs-repos)
+      (string-match home repo)
+      (push (replace-match "~" nil nil repo 0) magit-repos))
+    (setq projectile-known-projects magit-repos)
+    (dolist (repo +my/user-custom-repos)
+      (if (file-directory-p repo)
+          (push repo projectile-known-projects)))))
 
 ;; PATCH counsel-esh-history
 ;;;###autoload
@@ -116,6 +201,22 @@ repository root."
       (minibuffer-with-setup-hook
           (lambda () (backward-char 2))
         (evil-ex command-string)))))
+
+;;;###autoload
+(defun +my/markdown-copy-fix ()
+  (interactive)
+  (let ((case-fold-search nil))
+    (dolist (pair '(("<pre.*>" . "```python")
+                    ("<\/pre>" . "```")
+                    ("\\[<svg.*</svg>\\]([^)]*)" . "")
+                    ("\\\\\\*" . "*")
+                    ("\\\\\\#" . "#")
+                    ))
+      (goto-char (point-min))
+      ;; if you need regexp, use search-forward-regexp
+      (while (re-search-forward (car pair) nil t)
+        (replace-match (cdr pair))))))
+
 
 ;;;###autoload
 (defun iterm-open-new-tab (dir &optional args)
@@ -200,8 +301,9 @@ With PREFIX, cd to project root."
 ;;;###autoload
 (defun +my/check-minified-file ()
   (and
-   (not (member (file-name-extension (buffer-file-name))
-                '("org" "md" "markdown" "txt" "rtf")))
+   (not (when (buffer-file-name)
+          (member (file-name-extension (buffer-file-name))
+                  '("org" "md" "markdown" "txt" "rtf"))))
    (cl-loop for i from 1 to (min 30 (count-lines (point-min) (point-max)))
             if (> (get-nth-line-length i) 1000)
             return t
@@ -214,3 +316,63 @@ With PREFIX, cd to project root."
   `(let ((time (current-time)))
      ,@body
      (message "%.06f" (float-time (time-since time)))))
+
+;;;###autoload
+(defun +default/search-project-regex ()
+  "Search project with regex."
+  (interactive)
+  (let ((standard-search-fn #'ivy--regex-plus))
+    (+default/search-project)))
+;;
+;;; Scratch frame
+
+(defvar +my--scratch-frame nil)
+
+(defun cleanup-scratch-frame (frame)
+  (when (eq frame +my--scratch-frame)
+    (with-selected-frame frame
+      (setq doom-fallback-buffer-name (frame-parameter frame 'old-fallback-buffer))
+      (remove-hook 'delete-frame-functions #'cleanup-scratch-frame))))
+
+;;;###autoload
+(defun open-scratch-frame (&optional fn)
+  "Opens the org-capture window in a floating frame that cleans itself up once
+you're done. This can be called from an external shell script."
+  (interactive)
+  (let* ((frame-title-format "")
+         (preframe (cl-loop for frame in (frame-list)
+                            if (equal (frame-parameter frame 'name) "scratch")
+                            return frame))
+         (frame (unless preframe
+                  (make-frame `((name . "scratch")
+                                (width . 120)
+                                (height . 24)
+                                (transient . t)
+                                (internal-border-width . 10)
+                                (left-fringe . 0)
+                                (right-fringe . 0)
+                                (undecorated . t)
+                                ,(if IS-LINUX '(display . ":0")))))))
+    (setq +my--scratch-frame (or frame posframe))
+    (select-frame-set-input-focus +my--scratch-frame)
+    (when frame
+      (with-selected-frame frame
+        (if fn
+            (call-interactively fn)
+          (with-current-buffer (switch-to-buffer "*scratch*")
+            ;; (text-scale-set 2)
+            (when (eq major-mode 'fundamental-mode)
+              (emacs-lisp-mode)))
+          (redisplay)
+          (set-frame-parameter frame 'old-fallback-buffer doom-fallback-buffer-name)
+          (setq doom-fallback-buffer-name "*scratch*")
+          (add-hook 'delete-frame-functions #'cleanup-scratch-frame))))))
+
+;;;###autoload
+(defun +default/yank-relative-buffer-filename ()
+  "Copy the current buffer's path to the kill ring."
+  (interactive)
+  (if-let (filename (file-relative-name (or buffer-file-name (bound-and-true-p list-buffers-directory))
+                                        (doom-project-root)))
+      (message (kill-new (abbreviate-file-name filename)))
+    (error "Couldn't find filename in current buffer")))
